@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>nanoMusume 라이센스 발급</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #15171c;
+    --panel: #1d2027;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #6366f1;
+    --accent-hover: #4f46e5;
+    --success: #10b981;
+    --error: #ef4444;
+    --border: #2d3138;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 480px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  h1 { margin: 0 0 8px; font-size: 24px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+  label { display: block; font-size: 13px; margin: 16px 0 6px; color: var(--muted); }
+  input, select {
+    width: 100%; padding: 12px 14px;
+    background: #15171c; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 15px; font-family: inherit;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  button {
+    width: 100%; margin-top: 24px; padding: 14px;
+    background: var(--accent); color: white;
+    border: none; border-radius: 8px;
+    font-size: 16px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+  }
+  button:hover:not(:disabled) { background: var(--accent-hover); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .result {
+    margin-top: 24px; padding: 16px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 8px;
+  }
+  .result.error {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .result h2 { margin: 0 0 8px; font-size: 16px; }
+  .license-key {
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    font-size: 18px; font-weight: 600;
+    background: #15171c; padding: 14px;
+    border-radius: 6px; margin: 12px 0;
+    word-break: break-all; user-select: all;
+    border: 1px dashed var(--border);
+  }
+  .copy-btn {
+    width: auto; padding: 6px 12px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text); font-size: 12px; margin: 0;
+  }
+  .footnote { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>라이센스 발급</h1>
+  <p class="sub">구매하신 주문번호와 이메일을 입력하시면 즉시 7일 trial 라이센스가 발급되고, 판매자 확인 후 자동으로 정식 라이센스로 전환됩니다.</p>
+
+  <form id="claim-form">
+    <label for="channel">구매 채널</label>
+    <select id="channel" required>
+      <option value="kmong">크몽</option>
+      <option value="lecture">강의 플랫폼</option>
+      <option value="other">기타</option>
+    </select>
+
+    <label for="orderId">주문번호</label>
+    <input id="orderId" type="text" placeholder="크몽: 주문관리에서 확인" required autocomplete="off" />
+
+    <label for="email">이메일</label>
+    <input id="email" type="email" placeholder="라이센스 분실 시 본인 확인용" required />
+
+    <label for="note">메모 (선택)</label>
+    <input id="note" type="text" placeholder="강의 플랫폼 이름 등" autocomplete="off" />
+
+    <button id="submit-btn" type="submit">라이센스 받기</button>
+  </form>
+
+  <div id="result" style="display:none"></div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  // 배포 시 config.js의 LICENSE_API_BASE 값을 사용. 없으면 deno.dev 기본값.
+  const API_BASE = (window.LICENSE_API_BASE || 'https://nano-license-api.deno.dev').replace(/\/$/, '');
+
+  const form = document.getElementById('claim-form');
+  const btn = document.getElementById('submit-btn');
+  const result = document.getElementById('result');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.textContent = '발급 중...';
+    result.style.display = 'none';
+
+    const payload = {
+      orderId: document.getElementById('orderId').value.trim(),
+      email: document.getElementById('email').value.trim(),
+      channel: document.getElementById('channel').value,
+      note: document.getElementById('note').value.trim(),
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        showError(data.message || '발급에 실패했습니다');
+      } else {
+        showSuccess(data);
+      }
+    } catch (err) {
+      showError('네트워크 오류: ' + (err?.message || err));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '라이센스 받기';
+    }
+  });
+
+  function showSuccess(data) {
+    const stateLabel = data.state === 'active' ? '정식 활성' : 'Trial (7일)';
+    const expiresText = data.trialExpiresAt
+      ? `만료: ${new Date(data.trialExpiresAt * 1000).toLocaleString('ko-KR')}`
+      : '';
+    result.className = 'result';
+    result.style.display = 'block';
+    result.innerHTML = `
+      <h2>✓ 발급 완료 (${stateLabel})</h2>
+      <div>이 키를 nanoMusume 앱의 라이센스 활성화 화면에 입력하세요:</div>
+      <div class="license-key" id="key-text">${escapeHtml(data.licenseKey)}</div>
+      <button class="copy-btn" type="button" onclick="copyKey()">복사</button>
+      <div class="footnote">
+        ${escapeHtml(data.message || '')}<br/>
+        ${expiresText}<br/>
+        ※ 이 화면을 닫아도 같은 주문번호로 다시 접속하면 같은 키를 받을 수 있습니다.
+      </div>
+    `;
+  }
+
+  function showError(msg) {
+    result.className = 'result error';
+    result.style.display = 'block';
+    result.innerHTML = `<h2>발급 실패</h2><div>${escapeHtml(msg)}</div>`;
+  }
+
+  function copyKey() {
+    const t = document.getElementById('key-text')?.textContent || '';
+    navigator.clipboard?.writeText(t);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[c]));
+  }
+</script>
+</body>
+</html>
