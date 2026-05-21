@@ -110,9 +110,60 @@
   // 배포 시 config.js의 LICENSE_API_BASE 값을 사용. 없으면 deno.dev 기본값.
   const API_BASE = (window.LICENSE_API_BASE || 'https://nano-license-api.deno.dev').replace(/\/$/, '');
 
+  const STORAGE_KEY = 'nano-claim-cache-v1';
   const form = document.getElementById('claim-form');
   const btn = document.getElementById('submit-btn');
   const result = document.getElementById('result');
+
+  // ── 브라우저 핑거프린트 ──
+  // SHA-256(UA + lang + screen + timezone + canvas) → 32바이트 hex.
+  // 한 브라우저 = 같은 해시. incognito/다른 브라우저는 다른 해시지만, 정상 사용자 식별엔 충분.
+  async function computeClientHash() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 100; canvas.height = 30;
+    const ctx = canvas.getContext('2d');
+    let canvasFP = '';
+    try {
+      ctx.textBaseline = 'top';
+      ctx.font = '13px Arial';
+      ctx.fillStyle = '#f60';
+      ctx.fillRect(0, 0, 100, 30);
+      ctx.fillStyle = '#069';
+      ctx.fillText('nanoMusume-fp', 2, 5);
+      canvasFP = canvas.toDataURL();
+    } catch {}
+
+    const signals = [
+      navigator.userAgent,
+      navigator.language,
+      String(screen.width) + 'x' + String(screen.height) + 'x' + String(screen.colorDepth),
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      canvasFP,
+    ].join('|');
+
+    const data = new TextEncoder().encode(signals);
+    const hashBuf = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuf), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // ── 캐시: localStorage에 이전 발급 결과 저장 ──
+  function loadCache() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+  function saveCache(data) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+  }
+
+  // 페이지 로드 시 이전 발급 결과가 있으면 즉시 표시
+  (function showCachedKeyOnLoad() {
+    const cached = loadCache();
+    if (cached?.licenseKey) {
+      showSuccess(cached, { fromCache: true });
+    }
+  })();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -120,11 +171,14 @@
     btn.textContent = '발급 중...';
     result.style.display = 'none';
 
+    const clientHash = await computeClientHash();
+
     const payload = {
       orderId: document.getElementById('orderId').value.trim(),
       email: document.getElementById('email').value.trim(),
       channel: document.getElementById('channel').value,
       note: document.getElementById('note').value.trim(),
+      clientHash,
     };
 
     try {
@@ -137,6 +191,13 @@
       if (!res.ok || !data.ok) {
         showError(data.message || '발급에 실패했습니다');
       } else {
+        saveCache({
+          licenseKey: data.licenseKey,
+          state: data.state,
+          trialExpiresAt: data.trialExpiresAt,
+          message: data.message,
+          duplicateReason: data.duplicateReason,
+        });
         showSuccess(data);
       }
     } catch (err) {
@@ -147,22 +208,25 @@
     }
   });
 
-  function showSuccess(data) {
+  function showSuccess(data, opts = {}) {
     const stateLabel = data.state === 'active' ? '정식 활성' : 'Trial (7일)';
     const expiresText = data.trialExpiresAt
       ? `만료: ${new Date(data.trialExpiresAt * 1000).toLocaleString('ko-KR')}`
       : '';
+    const headerLabel = opts.fromCache
+      ? `이 PC에 발급된 라이센스 (${stateLabel})`
+      : `✓ 발급 완료 (${stateLabel})`;
     result.className = 'result';
     result.style.display = 'block';
     result.innerHTML = `
-      <h2>✓ 발급 완료 (${stateLabel})</h2>
+      <h2>${escapeHtml(headerLabel)}</h2>
       <div>이 키를 nanoMusume 앱의 라이센스 활성화 화면에 입력하세요:</div>
       <div class="license-key" id="key-text">${escapeHtml(data.licenseKey)}</div>
       <button class="copy-btn" type="button" onclick="copyKey()">복사</button>
       <div class="footnote">
         ${escapeHtml(data.message || '')}<br/>
         ${expiresText}<br/>
-        ※ 이 화면을 닫아도 같은 주문번호로 다시 접속하면 같은 키를 받을 수 있습니다.
+        ※ 한 PC당 1개의 라이센스만 발급됩니다. 같은 PC에서 다른 주문번호로 시도해도 이 키가 반환됩니다.
       </div>
     `;
   }
