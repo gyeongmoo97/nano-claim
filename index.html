@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>nanoMusume 라이센스 발급</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <style>
   :root {
     color-scheme: dark;
@@ -93,11 +94,15 @@
     <label for="orderId">주문번호</label>
     <input id="orderId" type="text" placeholder="크몽: 주문관리에서 확인" required autocomplete="off" />
 
+    <label for="siteNickname">사이트 닉네임 *</label>
+    <input id="siteNickname" type="text" placeholder="크몽 ID 또는 강의 플랫폼 닉네임"
+           required maxlength="60" autocomplete="off" />
+
     <label for="email">이메일</label>
     <input id="email" type="email" placeholder="라이센스 분실 시 본인 확인용" required />
 
     <label for="note">메모 (선택)</label>
-    <input id="note" type="text" placeholder="강의 플랫폼 이름 등" autocomplete="off" />
+    <input id="note" type="text" placeholder="기타 전달사항" autocomplete="off" />
 
     <button id="submit-btn" type="submit">라이센스 받기</button>
   </form>
@@ -177,6 +182,7 @@
       orderId: document.getElementById('orderId').value.trim(),
       email: document.getElementById('email').value.trim(),
       channel: document.getElementById('channel').value,
+      siteNickname: document.getElementById('siteNickname').value.trim(),
       note: document.getElementById('note').value.trim(),
       clientHash,
     };
